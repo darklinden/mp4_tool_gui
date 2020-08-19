@@ -40,11 +40,7 @@ def run_cmd(cmd):
     err_output, err = process.communicate()
     exit_code = process.returncode
 
-    if exit_code != 0:
-        if err is not None:
-            messagebox.showinfo(title=None, message=err)
-
-    return exit_code == 0
+    return exit_code == 0, err
 
 
 def clicked():
@@ -65,14 +61,20 @@ def clicked():
 
     cmd = 'ffmpeg'
     if platform.system() == 'Windows':
-        cmd = 'ffmpeg/bin/ffmpeg.exe'
+        cmd = 'ffmpeg.exe'
+        works, e = run_cmd([cmd, '-version'])
+        if not works:
+            cmd = 'ffmpeg/bin/ffmpeg.exe'
 
-    success = run_cmd(
+    success, err = run_cmd(
         [cmd, '-i', value, '-vcodec', 'libx264', '-crf', '20', '-filter:v', 'scale=720:-1', '-c:a', 'copy', des_file])
 
     if success:
         messagebox.showinfo(title=None, message='已压缩')
         show_list()
+    else:
+        if err is not None:
+            messagebox.showinfo(title=None, message=err)
 
 
 def show_list():
