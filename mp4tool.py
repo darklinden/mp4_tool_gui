@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-
+import json
 import os
 import platform
 import subprocess
@@ -34,13 +34,15 @@ def make_list(window):
 
 
 def run_cmd(cmd):
+    print(' '.join(cmd))
+
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    err_output, err = process.communicate()
+    output, err = process.communicate()
     exit_code = process.returncode
 
-    return exit_code == 0, err
+    return exit_code == 0, err, output
 
 
 def clicked():
@@ -58,23 +60,69 @@ def clicked():
 
     tmp_ext = value.split('.')[-1]
     des_file = value[:-len(tmp_ext) - 1] + '_out.' + tmp_ext
+    des_log = value[:-len(tmp_ext) - 1] + '_out.log'
 
-    cmd = 'ffmpeg'
+    probe_cmd = 'ffprobe'
     if platform.system() == 'Windows':
-        cmd = 'ffmpeg.exe'
-        works, e = run_cmd([cmd, '-version'])
+        probe_cmd = 'ffprobe.exe'
+        works, e, eo = run_cmd([probe_cmd, '-version'])
         if not works:
-            cmd = 'ffmpeg/bin/ffmpeg.exe'
+            probe_cmd = 'ffmpeg/bin/ffprobe.exe'
 
-    success, err = run_cmd(
-        [cmd, '-i', value, '-vcodec', 'libx264', '-crf', '20', '-filter:v', 'scale=720:-1', '-c:a', 'copy', des_file])
+    mpeg_cmd = 'ffmpeg'
+    if platform.system() == 'Windows':
+        mpeg_cmd = 'ffmpeg.exe'
+        works, e, eo = run_cmd([mpeg_cmd, '-version'])
+        if not works:
+            mpeg_cmd = 'ffmpeg/bin/ffmpeg.exe'
+
+    if os.path.exists(des_file):
+        os.remove(des_file)
+
+    if os.path.exists(des_log):
+        os.remove(des_log)
+
+    success, e, out = run_cmd(
+        [probe_cmd, '-v', 'error', '-show_entries', 'stream=width,height', '-of', 'json', value])
+    # b'{    "programs": [    ],    "streams": [        {            "width": 720,            "height": 406        },        {        }    ]}'
+
+    w = 0
+    h = 0
+    if success:
+        try:
+            out = out.decode("utf-8").replace('\\n', '')
+            js = json.loads(out)
+            w = int(js['streams'][0]['width'])
+            h = int(js['streams'][0]['height'])
+        except:
+            pass
+
+    if w > h:
+        if w > 720:
+            scale = 'scale=720:-2'
+        else:
+            scale = 'scale=' + str(w) + ':-2'
+    else:
+        if h > 720:
+            scale = 'scale=-2:720'
+        else:
+            scale = 'scale=-2:' + str(h) + ''
+
+    success, err, err_out = run_cmd(
+        [mpeg_cmd, '-i', value, '-vcodec', 'libx264', '-crf', '20', '-filter:v', scale, '-c:a', 'copy',
+         des_file])
 
     if success:
         messagebox.showinfo(title=None, message='已压缩')
         show_list()
     else:
-        if err is not None:
-            messagebox.showinfo(title=None, message=err)
+        with open(des_log, 'w') as f:
+            f.write(str(err))
+            f.write('\n\n')
+            f.write(str(err_out))
+            f.close()
+
+        messagebox.showinfo(title=None, message='压缩失败')
 
 
 def show_list():
@@ -83,7 +131,7 @@ def show_list():
         for f in file_names:
             abs_path = os.path.join(dir_path, f)
             tmp_ext = abs_path.split('.')[-1]
-            if tmp_ext == 'mp4':
+            if tmp_ext.lower() == 'mp4' or tmp_ext.lower() == 'mov':
                 list_box.insert(END, abs_path)
 
 
